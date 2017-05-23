@@ -4,37 +4,50 @@
 
 // Note: DO NOT DELETE OR MOVE THE FIRST 3 LINES -- they supply essential parameters
 
-// DAPI_segmentation.ijm
-// ImageJ macro to identify DAPI nuclei in somewhat faint/noisy images at high magnification
-// Theresa Swayne, Ph.D, Columbia University, tcs6 at cumc.columbia.edu
-// Designed as part of an analysis of cytoplasmic neuronal markers
+// arc_LC3B_analysis.ijm
+// ImageJ macro to identify DAPI nuclei in somewhat faint/noisy images at high magnification,
+// and measure nuclear and cytoplasmic intensity in two other channels
+// Designed for analysis of neuronal markers
+// Theresa Swayne, Ph.D, Columbia University, tcs6@cumc.columbia.edu
 
-// Input: folder of single 3- channel images with nuclei as the 1st channel
-// Output: split channels, ROI set containing nuclei
-// Usage: Run the macro.
+// Input: folder of single 3- channel images (usually max projections) with nuclei as the 1st channel
+// Output: split channels, ROI set containing nuclei, measurements of nuclear and cytoplasmic intensity in the other channels
+//
+// Usage: Organize images to be analyzed into a folder. Run the macro.
  
 // ADJUSTABLE PARAMETERS -------------------------
 
-// The following neighborhood values should be larger than the largest nucleus in the image, in pixels
-//BACKGROUNDSIZE = 50 // used in background subtraction.
-BLOCKSIZE = 127 // used in contrast enhancement
-RADIUS = 40 // used in local thresholding
+// Neighborhood values -- larger nuclei require larger values
+BLOCKSIZE = 127; // used in contrast enhancement
+RADIUS = 40; // used in local thresholding
 
-// The following values affect how the nuclear boundaries are adjusted after thresholding
-//OPENITER = 2 // higher value = more smoothing
-//OPENCOUNT = 2 // lower value = more smoothing
+// Allowable nuclei sizes in microns^2
+CELLMIN = 30; // minimum area
+CELLMAX = 500; // maximum area
 
-// The following values govern allowable nuclei sizes in microns^2
-CELLMIN = 30 // minimum area
-CELLMAX = 500 // maximum area
+// Radius beyond the nucleus, in microns, that is used to measure cytoplasm
+// Larger values may impinge on neighboring cells
+// Smaller values have more noise
+CYTOPLASM_THICKNESS = 5
 
 // SETUP -----------------------------------------------------------------------
+
+run("Set Measurements...", "area mean min centroid integrated display decimal=2");
+
+// save data as csv, preserve headers, preserve row number for copy/paste
+run("Input/Output...", "file=.csv copy_row save_column save_row"); 
+
+// add headers to results file
+headers = "Filename,Channel,Nuc Area,Nuc Mean,Nuc IntDen,Nuc RawIntDen,Cyto Area,Cyto Mean,Cyto IntDen,Cyto RawIntDen";
+File.append(headers,dir2  + File.separator+ "Results.csv");
 
 setBatchMode(true);
 n = 0;
 
 splitChannelsFolder(dir1); // split each image into channels
-processFolder(dir1); // this actually executes the functions
+processFolder(dir1); // actually do the analysis
+
+setBatchMode(false);
 
 function splitChannelsFolder(dir1) 
 	{
@@ -118,7 +131,62 @@ function segmentNucleiImage(dir1, name)
 
 function processC2Image(dir1, name)
 	{
-	// TODO
-	print("here will be the results of the next phase");
+	open(dir1+File.separator+name);
+	dotIndex = indexOf(name, ".");
+	basename = substring(name, 3, dotIndex); // taking off the channel number
+	procName = "processed_" + basename + ".tif";
+	resultName = "results_" + basename + ".csv";
+	roiName = "Nuclei_" + basename + ".zip";
+	id = getImageID();
+
+	roiManager("Open", dir1 + File.separator + roiName); // open the ROI set containing nuclei
+
+	// measure nuclear intensity
+	roiManager("multi-measure measure_all append"); // measures individual nuclei and appends results
+
+	// TODO: measure cytoplasmic intensity
+		// generate band ROIs
+
+		// update and save cytoplasmic rois
+
+		// measure intensity
+
+	// write results by cannibalizing the below
+
+		//	String.copyResults;
+		//	newResults = String.paste;
+		//	newResults = substring(newResults,0,lengthOf(newResults)-1); // strip the final newline
+		//	newResults = replace(newResults, "\t",","); // replace tabs with commas for csv
+
+		
+				// read data from the Summary window
+		//	selectWindow("Summary"); 
+		//	lines = split(getInfo(), "\n"); 
+		//	headings = split(lines[0], "\t"); 
+		//	C1Values = split(lines[1], "\t"); 
+		//	C1Name = C1Values[0];
+		//	C2Values = split(lines[2], "\t"); 
+		//	C2Name = C2Values[0];
+		//	OverlapValues = split(lines[3], "\t"); 
+		
+			// convert strings to integers
+		//	C1Count = parseInt(C1Values[1]);
+		//	C2Count = parseInt(C2Values[1]);
+		//	OverlapCount = parseInt(OverlapValues[1]);
+		
+			// calculate the percent overlap and convert to string
+		//	C1withC2 = OverlapCount/C1Count;
+		//	C2withC1 = OverlapCount/C2Count;
+		//	strC1withC2 = d2s(C1withC2, 3);
+		//	strC2withC1 = d2s(C2withC1, 3);
+		
+			// collect the colocalization data
+			// format: image name, n cells, n cells colocalized with other label, % colocalized with other label
+		//	firstRow = C1Name+",1," + C1Count+ ","+ OverlapCount + "," + strC1withC2;
+		//	secondRow = C2Name + ",2," + C2Count+ "," + OverlapCount + "," + strC2withC1;
+		//	colocResults = firstRow + "\n" + secondRow;
+
+		//	File.append(newResults,dir2 + File.separator + resultName);
+			
 	}
-	
+
