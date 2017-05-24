@@ -1,5 +1,5 @@
-// @File(label = "Input directory", style = "directory") dir1
-// @File(label = "Output directory", style = "directory") dir2
+// @File(label = "Input directory", style = "directory") inputdir
+// @File(label = "Output directory", style = "directory") outputdir
 // @String(label = "File suffix", value = ".tif") suffix
 
 // Note: DO NOT DELETE OR MOVE THE FIRST 3 LINES -- they supply essential parameters
@@ -28,78 +28,82 @@ CELLMAX = 500; // maximum area
 // Radius beyond the nucleus, in microns, that is used to measure cytoplasm
 // Larger values may impinge on neighboring cells
 // Smaller values have more noise
-CYTOPLASM_THICKNESS = 5
+CYTOPLASM_THICKNESS = 1
 
-// SETUP -----------------------------------------------------------------------
+// --------- SETUP 
 
 run("Set Measurements...", "area mean min centroid integrated display decimal=2");
+run("Clear Results");
 
 // save data as csv, preserve headers, preserve row number for copy/paste
 run("Input/Output...", "file=.csv copy_row save_column save_row"); 
 
 // add headers to results file
 headers = "Filename,Channel,Nuc Area,Nuc Mean,Nuc IntDen,Nuc RawIntDen,Cyto Area,Cyto Mean,Cyto IntDen,Cyto RawIntDen";
-File.append(headers,dir2  + File.separator+ "Results.csv");
+File.append(headers,outputdir  + File.separator+ "Results.csv");
 
 setBatchMode(true);
 n = 0;
 
-splitChannelsFolder(dir1); // split each image into channels
-processFolder(dir1); // actually do the analysis
+splitChannelsFolder(inputdir); // split each image into channels
+processFolder(inputdir); // actually do the analysis
 
 setBatchMode(false);
 
-function splitChannelsFolder(dir1) 
+// ------- functions for processing folders
+
+function splitChannelsFolder(inputdir) 
 	{
-   list = getFileList(dir1);
+   list = getFileList(inputdir);
    for (i=0; i<list.length; i++) 
    		{
-        if(File.isDirectory(dir1 + File.separator + list[i])) {
-			processFolder("" + dir1 +File.separator+ list[i]);}
+        if(File.isDirectory(inputdir + File.separator + list[i])) {
+			processFolder("" + inputdir +File.separator+ list[i]);}
         else if (endsWith(list[i], suffix)) {
-           		splitChannelsImage(dir1, list[i]);}
+           		splitChannelsImage(inputdir, list[i]);}
     	}
 	}
 
-
-function processFolder(dir1) 
+function processFolder(inputdir) 
 	{
-   list = getFileList(dir1);
+   list = getFileList(inputdir);
    for (i=0; i<list.length; i++) 
    		{
-        if(File.isDirectory(dir1 + File.separator + list[i])){
-			processFolder("" + dir1 +File.separator+ list[i]);}
+        if(File.isDirectory(inputdir + File.separator + list[i])){
+			processFolder("" + inputdir +File.separator+ list[i]);}
         else if (endsWith(list[i], suffix))
         	{
         	if (startsWith(list[i], "C1")){
-           		segmentNucleiImage(dir1, list[i]);} // gets the nuclei -- assumes filename begins with "C1"
+           		segmentNucleiImage(inputdir, list[i]);} // gets the nuclei -- assumes filename begins with "C1"
            	else if (startsWith(list[i], "C2")){
-           		processC2Image(dir1, list[i]);} // TODO: nuclei/cytoplasm analysis
+           		processC2Image(inputdir, list[i]);} // nuclei/cytoplasm analysis
         	}
     	}
 	}
 
-function splitChannelsImage(dir1, name) 
+// ------- functions for processing individual files
+
+function splitChannelsImage(inputdir, name) 
 	{
-	open(dir1+File.separator+name);
+	open(inputdir+File.separator+name);
 	print("splitting",n++, name);
 	run("Split Channels");
 	while (nImages > 0)  // works on any number of channels
 		{
-		saveAs ("tiff", dir1+File.separator+getTitle);	// save every picture in the *input* folder
+		saveAs ("tiff", inputdir+File.separator+getTitle);	// save every picture in the *input* folder
 		close();
 		}
 	}
 
-function segmentNucleiImage(dir1, name) 
+function segmentNucleiImage(inputdir, name) 
 	{
 	// assumes nuclei are in channel 1 of the previously split image, and the filename begins with "C1"
-	open(dir1+File.separator+name);
+	open(inputdir+File.separator+name);
 	dotIndex = indexOf(name, ".");
 	basename = substring(name, 3, dotIndex); // taking off the channel number
-	procName = "processed_" + basename + ".tif";
-	resultName = "results_" + basename + ".csv";
-	roiName = "Nuclei_" + basename + ".zip";
+	procName = basename + "_processed.tif";
+	resultName = basename + "_results.csv";
+	nucRoiName = basename + "_Nuclei" + ".zip";
 	id = getImageID();
 	
 	// process a copy of the image
@@ -118,40 +122,60 @@ function segmentNucleiImage(dir1, name)
 	run("Convert to Mask");
 	
 	selectWindow(procName);
-	//run("Options...", "iterations=" + OPENITER + " count=" + OPENCOUNT + " black"); // smooth borders
-	//run("Open");
 	run("Watershed"); // separate touching nuclei
 	
 	// analyze particles to get initial ROIs
 	
 	roiManager("reset");
 	run("Analyze Particles...", "size=" + CELLMIN + "-" + CELLMAX + " exclude clear add");
-	roiManager("Save", dir2 + File.separator + roiName); // saved in the output folder
+	roiManager("Save", outputdir + File.separator + nucRoiName);
+
+	// clean up
+	selectWindow(procName);
+	close();
+	selectWindow(name);
+	close();
+	roiManager("reset");
 	}
 
-function processC2Image(dir1, name)
+function processC2Image(inputdir, name)
 	{
-	open(dir1+File.separator+name);
+	// converts nuclear ROIs to bands and measures intensity
+
+	open(inputdir+File.separator+name);
 	dotIndex = indexOf(name, ".");
 	basename = substring(name, 3, dotIndex); // taking off the channel number
-	procName = "processed_" + basename + ".tif";
-	resultName = "results_" + basename + ".csv";
-	roiName = "Nuclei_" + basename + ".zip";
+	resultName = basename + "_Results.csv";
+	nucRoiName = basename + "_Nuclei.zip";
+	cytRoiName = basename + "_Cyto.zip";
 	id = getImageID();
 
-	roiManager("Open", dir1 + File.separator + roiName); // open the ROI set containing nuclei
+	roiManager("Open", outputdir + File.separator + nucRoiName); // open the ROI set containing nuclei
 
 	// measure nuclear intensity
 	roiManager("multi-measure measure_all append"); // measures individual nuclei and appends results
 
-	// TODO: measure cytoplasmic intensity
-		// generate band ROIs
+	numROIs = roiManager("count");
+	roiManager("Deselect");
+	run("Select None");
+	roiManager("Show None");
+	for (index = 0; index < numROIs; index++) // loop through ROIs
+		{
+		roiManager("Select", index);
+		run("Make Band...", "band="+CYTOPLASM_THICKNESS);
+		roiManager("Update");
+		}
 
-		// update and save cytoplasmic rois
+	roiManager("Deselect");
+	run("Select None");
 
-		// measure intensity
+	// measure cytoplasmic intensity
+	roiManager("multi-measure measure_all append"); // measures individual cytoplasms and appends results
 
-	// write results by cannibalizing the below
+	// save cytoplasm ROIs
+	roiManager("Save", outputdir + File.separator + cytRoiName); // saved in the output folder
+
+	// TODO: write results by cannibalizing the below
 
 		//	String.copyResults;
 		//	newResults = String.paste;
@@ -186,7 +210,11 @@ function processC2Image(dir1, name)
 		//	secondRow = C2Name + ",2," + C2Count+ "," + OverlapCount + "," + strC2withC1;
 		//	colocResults = firstRow + "\n" + secondRow;
 
-		//	File.append(newResults,dir2 + File.separator + resultName);
-			
+		//	File.append(newResults,outputdir + File.separator + resultName);
+
+	// clean up
+	selectWindow(name);
+	close();
+	roiManager("reset");
 	}
 
