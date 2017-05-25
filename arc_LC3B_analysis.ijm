@@ -14,6 +14,8 @@
 // Output: split channels, ROI set containing nuclei, measurements of nuclear and cytoplasmic intensity in the other channels
 //
 // Usage: Organize images to be analyzed into a folder. Run the macro.
+
+// Limitations: only multi-channel images can be in the input directory. do not place previously split images there.
  
 // ADJUSTABLE PARAMETERS -------------------------
 
@@ -69,8 +71,8 @@ function splitChannelsFolder(inputdir)
    		isSingleChannel = ((startsWith(list[i], "C1")) || (startsWith(list[i], "C2")) || (startsWith(list[i], "C3")));
 //   		print(list[i],isSingleChannel);	
         if(File.isDirectory(inputdir + File.separator + list[i])) {
-			processFolder("" + inputdir +File.separator+ list[i]);}
-        else if (!isSingleChannel && (endsWith(list[i], suffix))) {     
+			splitChannelsFolder("" + inputdir +File.separator+ list[i]);}
+        else if (!isSingleChannel && (endsWith(list[i], suffix))) {     // avoids error if there are C1, C2, C3 images in the folder
 			splitChannelsImage(inputdir, list[i]);}
     	}
 	}
@@ -139,15 +141,19 @@ function segmentNucleiImage(inputdir, name)
 	// analyze particles to get initial ROIs
 	roiManager("reset");
 	run("Analyze Particles...", "size=" + CELLMIN + "-" + CELLMAX + " exclude clear add");
-	roiManager("Save", outputdir + File.separator + nucRoiName);
+	
+	print("about to save the nuclear ROIs");// BUG: somewhere after this point the selection list is empty if C images pre-exist
+
+	roiManager("Save", outputdir + File.separator + nucRoiName); 
 
 	// clean up
 	selectWindow(procName);
-	close();
+	close(); // BUG: it saves the processed image during a repeat run
 	selectWindow(name);
 	close();
 	roiManager("reset");
 	run("Clear Results");
+	print("number of results at end of C1 function",nResults);
 	}
 
 function processC2C3Image(inputdir, name)
@@ -175,6 +181,7 @@ function processC2C3Image(inputdir, name)
 	// measure C2 nuclear intensity
 	selectWindow(name);
 	roiManager("multi-measure measure_all append"); // measure individual nuclei and appends results
+	// TODO: Is there a bug in multi-measure preventing clearing of results when append is selected?
 	print("Measuring nuclei for",name);
 	print("number of results after C2 nuclei:",nResults);
 
