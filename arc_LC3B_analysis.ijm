@@ -27,7 +27,7 @@ CELLMAX = 500; // maximum area
 
 // Radius beyond the nucleus, in microns, that is used to measure cytoplasm
 // Larger values may impinge on neighboring cells
-// Smaller values have more noise
+// Smaller values may bring in more noise because of fewer pixels measured
 CYTOPLASM_THICKNESS = 1
 
 // --------- SETUP 
@@ -39,7 +39,13 @@ run("Clear Results");
 run("Input/Output...", "file=.csv copy_row"); 
 
 // add headers to results file
-headers = "Filename,Channel,X,Y,NucArea,NucMean,NucIntDen,NucRawIntDen,CytoArea,CytoMean,CytoIntDen,CytoRawIntDen";
+// 0 filename, 1 x centroid, 2 y centroid,
+// 3-6 C2 nuclear, 7-10 C2 cyto,
+// 11-14 C3 nuclear, 15-18 C3 cyto
+headers1 = "Filename,X,Y,";
+headers2 = "C2NucArea,C2NucMean,C2NucIntDen,C2NucRawIntDen,C2CytoArea,C2CytoMean,C2CytoIntDen,C2CytoRawIntDen,";
+headers3 = "C3NucArea,C3NucMean,C3NucIntDen,C3NucRawIntDen,C3CytoArea,C3CytoMean,C3CytoIntDen,C3CytoRawIntDen";
+headers = headers1 + headers2 + headers3;
 File.append(headers,outputdir  + File.separator+ "Results.csv");
 
 setBatchMode(true);
@@ -47,6 +53,9 @@ n = 0;
 
 splitChannelsFolder(inputdir); // split each image into channels
 processFolder(inputdir); // actually do the analysis
+print("number of results at end of program:",nResults);
+run("Clear Results");
+print("number of results after final clearing:",nResults);
 
 setBatchMode(false);
 
@@ -57,27 +66,29 @@ function splitChannelsFolder(inputdir)
    list = getFileList(inputdir);
    for (i=0; i<list.length; i++) 
    		{
+   		isSingleChannel = ((startsWith(list[i], "C1")) || (startsWith(list[i], "C2")) || (startsWith(list[i], "C3")));
+//   		print(list[i],isSingleChannel);	
         if(File.isDirectory(inputdir + File.separator + list[i])) {
 			processFolder("" + inputdir +File.separator+ list[i]);}
-        else if (endsWith(list[i], suffix)) {
-           		splitChannelsImage(inputdir, list[i]);}
+        else if (!isSingleChannel && (endsWith(list[i], suffix))) {     
+			splitChannelsImage(inputdir, list[i]);}
     	}
 	}
 
 function processFolder(inputdir) 
 	{
-   list = getFileList(inputdir);
-   for (i=0; i<list.length; i++) 
+	list = getFileList(inputdir);
+	for (i=0; i<list.length; i++) 
    		{
         if(File.isDirectory(inputdir + File.separator + list[i])){
 			processFolder("" + inputdir +File.separator+ list[i]);}
         else if (endsWith(list[i], suffix))
         	{
         	if (startsWith(list[i], "C1")){
-           		segmentNucleiImage(inputdir, list[i]);} // gets the nuclei -- assumes filename begins with "C1"
+           		segmentNucleiImage(inputdir, list[i]);} // nuclei segmentation 
            	else if (startsWith(list[i], "C2")){
-           		processC2Image(inputdir, list[i]);} // nuclei/cytoplasm analysis
-        	}
+           		processC2C3Image(inputdir, list[i]);} // nuclei/cytoplasm intensity analysis
+        	} // nothing happens with C3 images or original images
     	}
 	}
 
@@ -99,6 +110,7 @@ function segmentNucleiImage(inputdir, name)
 	{
 	// assumes nuclei are in channel 1 of the previously split image, and the filename begins with "C1"
 	open(inputdir+File.separator+name);
+	print("opening C1 image",name);
 	dotIndex = indexOf(name, ".");
 	basename = substring(name, 3, dotIndex); // taking off the channel number
 	procName = basename + "_processed.tif";
@@ -125,7 +137,6 @@ function segmentNucleiImage(inputdir, name)
 	run("Watershed"); // separate touching nuclei
 	
 	// analyze particles to get initial ROIs
-	
 	roiManager("reset");
 	run("Analyze Particles...", "size=" + CELLMIN + "-" + CELLMAX + " exclude clear add");
 	roiManager("Save", outputdir + File.separator + nucRoiName);
@@ -136,25 +147,44 @@ function segmentNucleiImage(inputdir, name)
 	selectWindow(name);
 	close();
 	roiManager("reset");
+	run("Clear Results");
 	}
 
-function processC2Image(inputdir, name)
+function processC2C3Image(inputdir, name)
 	{
-	// converts nuclear ROIs to bands and measures intensity
+	// converts nuclear ROIs to bands, 
+	// measures nuclear and cytoplasmic (band) intensity in C2 and C3,
+	// and saves results in a CSV file
 
-	open(inputdir+File.separator+name);
+	print("number of results at beginning of C2C3 function:",nResults);
+
+	open(inputdir+File.separator+name); // C2 image
+	print("opening C2 image",name);
 	dotIndex = indexOf(name, ".");
 	basename = substring(name, 3, dotIndex); // taking off the channel number
 	resultName = basename + "_Results.csv";
 	nucRoiName = basename + "_Nuclei.zip";
 	cytRoiName = basename + "_Cyto.zip";
-	id = getImageID();
 
-	roiManager("Open", outputdir + File.separator + nucRoiName); // open the ROI set containing nuclei
+	C3Name = "C3-"+basename+".tif";
+	open(inputdir+File.separator+C3Name); // corresponding C3 image
+	print("opening C3 image",name);
 
-	// measure nuclear intensity
-	roiManager("multi-measure measure_all append"); // measures individual nuclei and appends results
+	roiManager("Open", outputdir + File.separator + nucRoiName); // ROI set containing nuclei
 
+	// measure C2 nuclear intensity
+	selectWindow(name);
+	roiManager("multi-measure measure_all append"); // measure individual nuclei and appends results
+	print("Measuring nuclei for",name);
+	print("number of results after C2 nuclei:",nResults);
+
+	// measure C3 nuclear intensity
+	selectWindow(C3Name);
+	roiManager("multi-measure measure_all append"); // measure individual nuclei and appends results
+	print("Measuring nuclei for",C3Name);
+	print("number of results after C3 nuclei:",nResults);
+	
+	// create and save cytoplasm band ROIs
 	numROIs = roiManager("count");
 	roiManager("Deselect");
 	run("Select None");
@@ -168,22 +198,52 @@ function processC2Image(inputdir, name)
 
 	roiManager("Deselect");
 	run("Select None");
+	roiManager("Save", outputdir + File.separator + cytRoiName); 
 
-	// measure cytoplasmic intensity
-	roiManager("multi-measure measure_all append"); // measures individual cytoplasms and appends results
+	// measure C2 cytoplasmic intensity
+	selectWindow(name);
+	roiManager("multi-measure measure_all append");
+	print("Measuring cytoplasm for",name);
+	print("number of results after C2 cyto:",nResults);
 
-	// save cytoplasm ROIs
-	roiManager("Save", outputdir + File.separator + cytRoiName); // saved in the output folder
+	// measure C3 cytoplasmic intensity
+	selectWindow(C3Name);
+	roiManager("multi-measure measure_all append");
+	print("Measuring cytoplasm for",C3Name);
+	print("number of results after C3 cyto:",nResults);
 
-	// TODO: write results by cannibalizing the below
+	// TODO: write results
 
-		//	String.copyResults;
-		//	newResults = String.paste;
-		//	newResults = substring(newResults,0,lengthOf(newResults)-1); // strip the final newline
-		//	newResults = replace(newResults, "\t",","); // replace tabs with commas for csv
+	// loop through numROIs (1 line per cell)
+	
+		// gather data
+			// results table (n = roiManager(count)):
+			// column 0 row, 1 label, 2 area, 3 mean, 4-5 x/y, 6-7 intden/rawintden
+			// row 1 to n = C2 nuclei
+			// n+1 to 2*n = C3 nuclei
+			// (2*n)+1 to 3*n = C2 cyto
+			// (3*n)+1 to 4*n = C3 cyto
 
 		
-				// read data from the Summary window
+		// assemble string resultString
+			// 0 filename, 1 x centroid, 2 y centroid,
+			// 3-6 C2 nuclear, 7-10 C2 cyto,
+			// 11-14 C3 nuclear, 15-18 C3 cyto
+
+		//  write data: 
+			// File.append(resultString,outputdir + File.separator + resultName);
+
+	
+
+
+		// String.copyResults;
+		// newResults = String.paste;
+		// newResults = substring(newResults,0,lengthOf(newResults)-1); // strip the final newline
+		// newResults = replace(newResults, "\t",","); // replace tabs with commas for csv
+
+		// or getResultString("Column", row), getResult("Column", row), getResultLabel(row)
+		// since using the actual results table
+
 		//	selectWindow("Summary"); 
 		//	lines = split(getInfo(), "\n"); 
 		//	headings = split(lines[0], "\t"); 
@@ -210,11 +270,13 @@ function processC2Image(inputdir, name)
 		//	secondRow = C2Name + ",2," + C2Count+ "," + OverlapCount + "," + strC2withC1;
 		//	colocResults = firstRow + "\n" + secondRow;
 
-		//	File.append(newResults,outputdir + File.separator + resultName);
 
 	// clean up
 	selectWindow(name);
 	close();
+	selectWindow(C3Name);
+	close();
 	roiManager("reset");
+	print("number of results at end of C2C3 function:",nResults);
 	}
 
