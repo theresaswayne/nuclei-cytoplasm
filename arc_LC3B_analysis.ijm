@@ -32,14 +32,14 @@ CYTOPLASM_THICKNESS = 1
 
 // --------- SETUP 
 
-run("Set Measurements...", "area mean min centroid integrated display decimal=2");
+run("Set Measurements...", "area mean centroid integrated display decimal=2");
 run("Clear Results");
 
-// save data as csv, preserve headers, preserve row number for copy/paste
-run("Input/Output...", "file=.csv copy_row save_column save_row"); 
+// save data as csv, omit headers, preserve row number
+run("Input/Output...", "file=.csv copy_row"); 
 
 // add headers to results file
-headers = "Filename,Channel,Nuc Area,Nuc Mean,Nuc IntDen,Nuc RawIntDen,Cyto Area,Cyto Mean,Cyto IntDen,Cyto RawIntDen";
+headers = "Filename,Channel,X,Y,NucArea,NucMean,NucIntDen,NucRawIntDen,CytoArea,CytoMean,CytoIntDen,CytoRawIntDen";
 File.append(headers,outputdir  + File.separator+ "Results.csv");
 
 setBatchMode(true);
