@@ -50,16 +50,15 @@ headers3 = "C3NucArea,C3NucMean,C3NucIntDen,C3NucRawIntDen,C3CytoArea,C3CytoMean
 headers = headers1 + headers2 + headers3;
 File.append(headers,outputdir  + File.separator+ "Results.csv");
 
-setBatchMode(true);
+setBatchMode(true); 
 n = 0;
 
 splitChannelsFolder(inputdir); // split each image into channels
 processFolder(inputdir); // actually do the analysis
-print("number of results at end of program:",nResults);
 run("Clear Results");
-print("number of results after final clearing:",nResults);
 
 setBatchMode(false);
+
 
 // ------- functions for processing folders
 
@@ -116,7 +115,6 @@ function segmentNucleiImage(inputdir, name)
 	dotIndex = indexOf(name, ".");
 	basename = substring(name, 3, dotIndex); // taking off the channel number
 	procName = basename + "_processed.tif";
-	resultName = basename + "_results.csv";
 	nucRoiName = basename + "_Nuclei" + ".zip";
 	id = getImageID();
 	
@@ -140,20 +138,21 @@ function segmentNucleiImage(inputdir, name)
 	
 	// analyze particles to get initial ROIs
 	roiManager("reset");
-	run("Analyze Particles...", "size=" + CELLMIN + "-" + CELLMAX + " exclude clear add");
+	run("Analyze Particles...", "size=" + CELLMIN + "-" + CELLMAX + " display exclude clear add");
 	
-	print("about to save the nuclear ROIs");// BUG: somewhere after this point the selection list is empty if C images pre-exist
-
+	print("about to save the nuclear ROIs"); 
+	// BUG: saving SOMETIMES gives error "the selection list is empty" ... usually on a repeat run but not always
 	roiManager("Save", outputdir + File.separator + nucRoiName); 
+	print("just saved the nuclear ROIs");
 
 	// clean up
-	selectWindow(procName);
-	close(); // BUG: it saves the processed image during a repeat run
 	selectWindow(name);
 	close();
 	roiManager("reset");
 	run("Clear Results");
-	print("number of results at end of C1 function",nResults);
+	selectWindow(procName);
+	close(); 	
+
 	}
 
 function processC2C3Image(inputdir, name)
@@ -161,8 +160,6 @@ function processC2C3Image(inputdir, name)
 	// converts nuclear ROIs to bands, 
 	// measures nuclear and cytoplasmic (band) intensity in C2 and C3,
 	// and saves results in a CSV file
-
-	print("number of results at beginning of C2C3 function:",nResults);
 
 	open(inputdir+File.separator+name); // C2 image
 	print("opening C2 image",name);
@@ -181,15 +178,12 @@ function processC2C3Image(inputdir, name)
 	// measure C2 nuclear intensity
 	selectWindow(name);
 	roiManager("multi-measure measure_all append"); // measure individual nuclei and appends results
-	// TODO: Is there a bug in multi-measure preventing clearing of results when append is selected?
 	print("Measuring nuclei for",name);
-	print("number of results after C2 nuclei:",nResults);
 
 	// measure C3 nuclear intensity
 	selectWindow(C3Name);
 	roiManager("multi-measure measure_all append"); // measure individual nuclei and appends results
 	print("Measuring nuclei for",C3Name);
-	print("number of results after C3 nuclei:",nResults);
 	
 	// create and save cytoplasm band ROIs
 	numROIs = roiManager("count");
@@ -211,13 +205,11 @@ function processC2C3Image(inputdir, name)
 	selectWindow(name);
 	roiManager("multi-measure measure_all append");
 	print("Measuring cytoplasm for",name);
-	print("number of results after C2 cyto:",nResults);
 
 	// measure C3 cytoplasmic intensity
 	selectWindow(C3Name);
 	roiManager("multi-measure measure_all append");
 	print("Measuring cytoplasm for",C3Name);
-	print("number of results after C3 cyto:",nResults);
 
 	// TODO: write results
 
@@ -239,8 +231,6 @@ function processC2C3Image(inputdir, name)
 
 		//  write data: 
 			// File.append(resultString,outputdir + File.separator + resultName);
-
-	
 
 
 		// String.copyResults;
@@ -284,6 +274,7 @@ function processC2C3Image(inputdir, name)
 	selectWindow(C3Name);
 	close();
 	roiManager("reset");
-	print("number of results at end of C2C3 function:",nResults);
+
+	print("==============================");
 	}
 
