@@ -111,13 +111,15 @@ function segmentNucleiImage(inputdir, name)
 	{
 	// assumes nuclei are in channel 1 of the previously split image, and the filename begins with "C1"
 	open(inputdir+File.separator+name);
-	print("opening C1 image",name);
+	print("processing C1 image",name);
 	dotIndex = indexOf(name, ".");
 	basename = substring(name, 3, dotIndex); // taking off the channel number
 	procName = basename + "_processed.tif";
 	nucRoiName = basename + "_Nuclei" + ".zip";
 	id = getImageID();
-	
+
+	roiManager("reset");
+
 	// process a copy of the image
 	selectImage(id);
 	// square brackets allow handing of filenames containing spaces
@@ -137,13 +139,10 @@ function segmentNucleiImage(inputdir, name)
 	run("Watershed"); // separate touching nuclei
 	
 	// analyze particles to get initial ROIs
-	roiManager("reset");
-	run("Analyze Particles...", "size=" + CELLMIN + "-" + CELLMAX + " display exclude clear add");
-	
-	print("about to save the nuclear ROIs"); 
-	// BUG: saving SOMETIMES gives error "the selection list is empty" ... usually on a repeat run but not always
+	// note "display" here prevents sporadic error on saving ROIs: "the selection list is empty" ... usually on a repeat run but not always
+	run("Analyze Particles...", "size=" + CELLMIN + "-" + CELLMAX + " display exclude clear add"); 
+																				
 	roiManager("Save", outputdir + File.separator + nucRoiName); 
-	print("just saved the nuclear ROIs");
 
 	// clean up
 	selectWindow(name);
@@ -162,28 +161,25 @@ function processC2C3Image(inputdir, name)
 	// and saves results in a CSV file
 
 	open(inputdir+File.separator+name); // C2 image
-	print("opening C2 image",name);
+	print("processing C2 image",name);
 	dotIndex = indexOf(name, ".");
 	basename = substring(name, 3, dotIndex); // taking off the channel number
-	resultName = basename + "_Results.csv";
 	nucRoiName = basename + "_Nuclei.zip";
 	cytRoiName = basename + "_Cyto.zip";
 
 	C3Name = "C3-"+basename+".tif";
 	open(inputdir+File.separator+C3Name); // corresponding C3 image
-	print("opening C3 image",name);
+	print("processing C3 image",name);
 
 	roiManager("Open", outputdir + File.separator + nucRoiName); // ROI set containing nuclei
 
 	// measure C2 nuclear intensity
 	selectWindow(name);
 	roiManager("multi-measure measure_all append"); // measure individual nuclei and appends results
-	print("Measuring nuclei for",name);
 
 	// measure C3 nuclear intensity
 	selectWindow(C3Name);
 	roiManager("multi-measure measure_all append"); // measure individual nuclei and appends results
-	print("Measuring nuclei for",C3Name);
 	
 	// create and save cytoplasm band ROIs
 	numROIs = roiManager("count");
@@ -204,70 +200,65 @@ function processC2C3Image(inputdir, name)
 	// measure C2 cytoplasmic intensity
 	selectWindow(name);
 	roiManager("multi-measure measure_all append");
-	print("Measuring cytoplasm for",name);
 
 	// measure C3 cytoplasmic intensity
 	selectWindow(C3Name);
 	roiManager("multi-measure measure_all append");
-	print("Measuring cytoplasm for",C3Name);
-
-	// TODO: write results
 
 	// loop through numROIs (1 line per cell)
-	
-		// gather data
-			// results table (n = roiManager(count)):
-			// column 0 row, 1 label, 2 area, 3 mean, 4-5 x/y, 6-7 intden/rawintden
-			// row 1 to n = C2 nuclei
-			// n+1 to 2*n = C3 nuclei
-			// (2*n)+1 to 3*n = C2 cyto
-			// (3*n)+1 to 4*n = C3 cyto
+	numROIs = roiManager("count");
+	for (i = 0; i < numROIs; i++) 
+		{
+		// gather data as strings from results table:
+			// columns: 0 row#, 1 label, 2 area, 3 mean, 4-5 x/y, 6-7 intden/rawintden
+			// rows: 0 to n-1 = C2 nuclei
+			// n to 2*n-1 = C3 nuclei
+			// (2*n) to 3*n-1 = C2 cyto
+			// (3*n) to 4*n-1 = C3 cyto
 
+		x = getResultString("X",i); // ith row
+		y = getResultString("Y",i);
+
+		C2NucArea = getResultString("Area",i);
+		C2NucMean = getResultString("Mean",i);
+		C2NucIntDen = getResultString("IntDen",i);
+		C2NucRawIntDen = getResultString("RawIntDen",i);
 		
-		// assemble string resultString
+		C2CytoArea = getResultString("Area", i+numROIs);
+		C2CytoMean = getResultString("Mean", i+numROIs);
+		C2CytoIntDen = getResultString("IntDen", i+numROIs);
+		C2CytoRawIntDen = getResultString("RawIntDen", i+numROIs);
+		
+		C3NucArea = getResultString("Area", i+2*numROIs);
+		C3NucMean = getResultString("Mean", i+2*numROIs);
+		C3NucIntDen = getResultString("IntDen", i+2*numROIs);
+		C3NucRawIntDen = getResultString("RawIntDen", i+2*numROIs);
+		
+		C3CytoArea = getResultString("Area", i+3*numROIs);
+		C3CytoMean = getResultString("Mean", i+3*numROIs);
+		C3CytoIntDen = getResultString("IntDen", i+3*numROIs);
+		C3CytoRawIntDen = getResultString("RawIntDen", i+3*numROIs);
+		
+		// assemble results:
 			// 0 filename, 1 x centroid, 2 y centroid,
 			// 3-6 C2 nuclear, 7-10 C2 cyto,
 			// 11-14 C3 nuclear, 15-18 C3 cyto
 
+		resultString1 = basename + "," + x + "," + y + ",";
+		resultString2 = C2NucArea + ","+ C2NucMean + ","+ C2NucIntDen + ","+ C2NucRawIntDen+ ",";
+		resultString3 = C3NucArea + ","+ C3NucMean + ","+ C3NucIntDen + ","+ C3NucRawIntDen+ ",";
+		resultString4 = C2CytoArea + ","+ C2CytoMean + ","+ C2CytoIntDen + ","+ C2CytoRawIntDen+ ",";
+		resultString5 = C3CytoArea + ","+ C3CytoMean + ","+ C3CytoIntDen + ","+ C3CytoRawIntDen;
+
+		resultString = resultString1 + resultString2 + resultString3 + resultString4 + resultString5;
+		
 		//  write data: 
-			// File.append(resultString,outputdir + File.separator + resultName);
+		File.append(resultString,outputdir + File.separator + "Results.csv");
+		}
 
-
-		// String.copyResults;
-		// newResults = String.paste;
-		// newResults = substring(newResults,0,lengthOf(newResults)-1); // strip the final newline
-		// newResults = replace(newResults, "\t",","); // replace tabs with commas for csv
-
-		// or getResultString("Column", row), getResult("Column", row), getResultLabel(row)
-		// since using the actual results table
-
-		//	selectWindow("Summary"); 
-		//	lines = split(getInfo(), "\n"); 
-		//	headings = split(lines[0], "\t"); 
-		//	C1Values = split(lines[1], "\t"); 
-		//	C1Name = C1Values[0];
-		//	C2Values = split(lines[2], "\t"); 
-		//	C2Name = C2Values[0];
-		//	OverlapValues = split(lines[3], "\t"); 
-		
-			// convert strings to integers
-		//	C1Count = parseInt(C1Values[1]);
-		//	C2Count = parseInt(C2Values[1]);
-		//	OverlapCount = parseInt(OverlapValues[1]);
-		
-			// calculate the percent overlap and convert to string
-		//	C1withC2 = OverlapCount/C1Count;
-		//	C2withC1 = OverlapCount/C2Count;
-		//	strC1withC2 = d2s(C1withC2, 3);
-		//	strC2withC1 = d2s(C2withC1, 3);
-		
-			// collect the colocalization data
-			// format: image name, n cells, n cells colocalized with other label, % colocalized with other label
-		//	firstRow = C1Name+",1," + C1Count+ ","+ OverlapCount + "," + strC1withC2;
-		//	secondRow = C2Name + ",2," + C2Count+ "," + OverlapCount + "," + strC2withC1;
-		//	colocResults = firstRow + "\n" + secondRow;
-
-
+	// TODO: figure out some issues with end of results table having unequal areas for nuclei...
+	// I think this is because using numROIs but that's only good for the most recent image? 
+	
 	// clean up
 	selectWindow(name);
 	close();
