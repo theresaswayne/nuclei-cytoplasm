@@ -36,6 +36,7 @@ CYTOPLASM_THICKNESS = 1
 
 run("Set Measurements...", "area mean centroid integrated display decimal=2");
 run("Clear Results");
+print("=============================="); // draws a line in the Log window
 
 // save data as csv, omit headers, preserve row number
 run("Input/Output...", "file=.csv copy_row"); 
@@ -56,7 +57,7 @@ n = 0;
 splitChannelsFolder(inputdir); // split each image into channels
 processFolder(inputdir); // actually do the analysis
 run("Clear Results");
-
+print("Finished.");
 setBatchMode(false);
 
 
@@ -169,7 +170,7 @@ function processC2C3Image(inputdir, name)
 
 	C3Name = "C3-"+basename+".tif";
 	open(inputdir+File.separator+C3Name); // corresponding C3 image
-	print("processing C3 image",name);
+	print("processing C3 image",C3Name);
 
 	roiManager("Open", outputdir + File.separator + nucRoiName); // ROI set containing nuclei
 
@@ -255,9 +256,6 @@ function processC2C3Image(inputdir, name)
 		//  write data for this ROI: 
 		File.append(resultString,outputdir + File.separator + "Results.csv");
 		}
-
-	// TODO: figure out some issues with end of results table having unequal areas for nuclei...
-	// I think this is because using numROIs but that's only good for the most recent image? 
 	
 	// clean up
 	selectWindow(name);
