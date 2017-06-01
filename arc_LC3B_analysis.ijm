@@ -252,7 +252,7 @@ function processC2C3Image(inputdir, name)
 
 		resultString = resultString1 + resultString2 + resultString3 + resultString4 + resultString5;
 		
-		//  write data: 
+		//  write data for this ROI: 
 		File.append(resultString,outputdir + File.separator + "Results.csv");
 		}
 
@@ -265,6 +265,7 @@ function processC2C3Image(inputdir, name)
 	selectWindow(C3Name);
 	close();
 	roiManager("reset");
+	run("Clear Results");
 
 	print("==============================");
 	}
