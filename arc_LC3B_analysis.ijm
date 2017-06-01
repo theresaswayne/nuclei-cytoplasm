@@ -14,6 +14,8 @@
 // Output: split channels, ROI set containing nuclei, measurements of nuclear and cytoplasmic intensity in the other channels
 //
 // Usage: Organize images to be analyzed into a folder. Run the macro.
+
+// Limitations: only multi-channel images can be in the input directory. do not place previously split images there.
  
 // ADJUSTABLE PARAMETERS -------------------------
 
@@ -27,28 +29,37 @@ CELLMAX = 500; // maximum area
 
 // Radius beyond the nucleus, in microns, that is used to measure cytoplasm
 // Larger values may impinge on neighboring cells
-// Smaller values have more noise
+// Smaller values may bring in more noise because of fewer pixels measured
 CYTOPLASM_THICKNESS = 1
 
 // --------- SETUP 
 
 run("Set Measurements...", "area mean centroid integrated display decimal=2");
 run("Clear Results");
+print("=============================="); // draws a line in the Log window
 
 // save data as csv, omit headers, preserve row number
 run("Input/Output...", "file=.csv copy_row"); 
 
 // add headers to results file
-headers = "Filename,Channel,X,Y,NucArea,NucMean,NucIntDen,NucRawIntDen,CytoArea,CytoMean,CytoIntDen,CytoRawIntDen";
+// 0 filename, 1 x centroid, 2 y centroid,
+// 3-6 C2 nuclear, 7-10 C2 cyto,
+// 11-14 C3 nuclear, 15-18 C3 cyto
+headers1 = "Filename,X,Y,";
+headers2 = "C2NucArea,C2NucMean,C2NucIntDen,C2NucRawIntDen,C2CytoArea,C2CytoMean,C2CytoIntDen,C2CytoRawIntDen,";
+headers3 = "C3NucArea,C3NucMean,C3NucIntDen,C3NucRawIntDen,C3CytoArea,C3CytoMean,C3CytoIntDen,C3CytoRawIntDen";
+headers = headers1 + headers2 + headers3;
 File.append(headers,outputdir  + File.separator+ "Results.csv");
 
-setBatchMode(true);
+setBatchMode(true); 
 n = 0;
 
 splitChannelsFolder(inputdir); // split each image into channels
 processFolder(inputdir); // actually do the analysis
-
+run("Clear Results");
+print("Finished.");
 setBatchMode(false);
+
 
 // ------- functions for processing folders
 
@@ -57,27 +68,29 @@ function splitChannelsFolder(inputdir)
    list = getFileList(inputdir);
    for (i=0; i<list.length; i++) 
    		{
+   		isSingleChannel = ((startsWith(list[i], "C1")) || (startsWith(list[i], "C2")) || (startsWith(list[i], "C3")));
+//   		print(list[i],isSingleChannel);	
         if(File.isDirectory(inputdir + File.separator + list[i])) {
-			processFolder("" + inputdir +File.separator+ list[i]);}
-        else if (endsWith(list[i], suffix)) {
-           		splitChannelsImage(inputdir, list[i]);}
+			splitChannelsFolder("" + inputdir +File.separator+ list[i]);}
+        else if (!isSingleChannel && (endsWith(list[i], suffix))) {     // avoids error if there are C1, C2, C3 images in the folder
+			splitChannelsImage(inputdir, list[i]);}
     	}
 	}
 
 function processFolder(inputdir) 
 	{
-   list = getFileList(inputdir);
-   for (i=0; i<list.length; i++) 
+	list = getFileList(inputdir);
+	for (i=0; i<list.length; i++) 
    		{
         if(File.isDirectory(inputdir + File.separator + list[i])){
 			processFolder("" + inputdir +File.separator+ list[i]);}
         else if (endsWith(list[i], suffix))
         	{
         	if (startsWith(list[i], "C1")){
-           		segmentNucleiImage(inputdir, list[i]);} // gets the nuclei -- assumes filename begins with "C1"
+           		segmentNucleiImage(inputdir, list[i]);} // nuclei segmentation 
            	else if (startsWith(list[i], "C2")){
-           		processC2Image(inputdir, list[i]);} // nuclei/cytoplasm analysis
-        	}
+           		processC2C3Image(inputdir, list[i]);} // nuclei/cytoplasm intensity analysis
+        	} // nothing happens with C3 images or original images
     	}
 	}
 
@@ -99,13 +112,15 @@ function segmentNucleiImage(inputdir, name)
 	{
 	// assumes nuclei are in channel 1 of the previously split image, and the filename begins with "C1"
 	open(inputdir+File.separator+name);
+	print("processing C1 image",name);
 	dotIndex = indexOf(name, ".");
 	basename = substring(name, 3, dotIndex); // taking off the channel number
 	procName = basename + "_processed.tif";
-	resultName = basename + "_results.csv";
 	nucRoiName = basename + "_Nuclei" + ".zip";
 	id = getImageID();
-	
+
+	roiManager("reset");
+
 	// process a copy of the image
 	selectImage(id);
 	// square brackets allow handing of filenames containing spaces
@@ -125,36 +140,49 @@ function segmentNucleiImage(inputdir, name)
 	run("Watershed"); // separate touching nuclei
 	
 	// analyze particles to get initial ROIs
-	
-	roiManager("reset");
-	run("Analyze Particles...", "size=" + CELLMIN + "-" + CELLMAX + " exclude clear add");
-	roiManager("Save", outputdir + File.separator + nucRoiName);
+	// note "display" here prevents sporadic error on saving ROIs: "the selection list is empty" ... usually on a repeat run but not always
+	run("Analyze Particles...", "size=" + CELLMIN + "-" + CELLMAX + " display exclude clear add"); 
+																				
+	roiManager("Save", outputdir + File.separator + nucRoiName); 
 
 	// clean up
-	selectWindow(procName);
-	close();
 	selectWindow(name);
 	close();
 	roiManager("reset");
+	run("Clear Results");
+	selectWindow(procName);
+	close(); 	
+
 	}
 
-function processC2Image(inputdir, name)
+function processC2C3Image(inputdir, name)
 	{
-	// converts nuclear ROIs to bands and measures intensity
+	// converts nuclear ROIs to bands, 
+	// measures nuclear and cytoplasmic (band) intensity in C2 and C3,
+	// and saves results in a CSV file
 
-	open(inputdir+File.separator+name);
+	open(inputdir+File.separator+name); // C2 image
+	print("processing C2 image",name);
 	dotIndex = indexOf(name, ".");
 	basename = substring(name, 3, dotIndex); // taking off the channel number
-	resultName = basename + "_Results.csv";
 	nucRoiName = basename + "_Nuclei.zip";
 	cytRoiName = basename + "_Cyto.zip";
-	id = getImageID();
 
-	roiManager("Open", outputdir + File.separator + nucRoiName); // open the ROI set containing nuclei
+	C3Name = "C3-"+basename+".tif";
+	open(inputdir+File.separator+C3Name); // corresponding C3 image
+	print("processing C3 image",C3Name);
 
-	// measure nuclear intensity
-	roiManager("multi-measure measure_all append"); // measures individual nuclei and appends results
+	roiManager("Open", outputdir + File.separator + nucRoiName); // ROI set containing nuclei
 
+	// measure C2 nuclear intensity
+	selectWindow(name);
+	roiManager("multi-measure measure_all append"); // measure individual nuclei and appends results
+
+	// measure C3 nuclear intensity
+	selectWindow(C3Name);
+	roiManager("multi-measure measure_all append"); // measure individual nuclei and appends results
+	
+	// create and save cytoplasm band ROIs
 	numROIs = roiManager("count");
 	roiManager("Deselect");
 	run("Select None");
@@ -168,53 +196,75 @@ function processC2Image(inputdir, name)
 
 	roiManager("Deselect");
 	run("Select None");
+	roiManager("Save", outputdir + File.separator + cytRoiName); 
 
-	// measure cytoplasmic intensity
-	roiManager("multi-measure measure_all append"); // measures individual cytoplasms and appends results
+	// measure C2 cytoplasmic intensity
+	selectWindow(name);
+	roiManager("multi-measure measure_all append");
 
-	// save cytoplasm ROIs
-	roiManager("Save", outputdir + File.separator + cytRoiName); // saved in the output folder
+	// measure C3 cytoplasmic intensity
+	selectWindow(C3Name);
+	roiManager("multi-measure measure_all append");
 
-	// TODO: write results by cannibalizing the below
+	// loop through numROIs (1 line per cell)
+	numROIs = roiManager("count");
+	for (i = 0; i < numROIs; i++) 
+		{
+		// gather data as strings from results table:
+			// columns: 0 row#, 1 label, 2 area, 3 mean, 4-5 x/y, 6-7 intden/rawintden
+			// rows: 0 to n-1 = C2 nuclei
+			// n to 2*n-1 = C3 nuclei
+			// (2*n) to 3*n-1 = C2 cyto
+			// (3*n) to 4*n-1 = C3 cyto
 
-		//	String.copyResults;
-		//	newResults = String.paste;
-		//	newResults = substring(newResults,0,lengthOf(newResults)-1); // strip the final newline
-		//	newResults = replace(newResults, "\t",","); // replace tabs with commas for csv
+		x = getResultString("X",i); // ith row
+		y = getResultString("Y",i);
 
+		C2NucArea = getResultString("Area",i);
+		C2NucMean = getResultString("Mean",i);
+		C2NucIntDen = getResultString("IntDen",i);
+		C2NucRawIntDen = getResultString("RawIntDen",i);
 		
-				// read data from the Summary window
-		//	selectWindow("Summary"); 
-		//	lines = split(getInfo(), "\n"); 
-		//	headings = split(lines[0], "\t"); 
-		//	C1Values = split(lines[1], "\t"); 
-		//	C1Name = C1Values[0];
-		//	C2Values = split(lines[2], "\t"); 
-		//	C2Name = C2Values[0];
-		//	OverlapValues = split(lines[3], "\t"); 
+		C2CytoArea = getResultString("Area", i+numROIs);
+		C2CytoMean = getResultString("Mean", i+numROIs);
+		C2CytoIntDen = getResultString("IntDen", i+numROIs);
+		C2CytoRawIntDen = getResultString("RawIntDen", i+numROIs);
 		
-			// convert strings to integers
-		//	C1Count = parseInt(C1Values[1]);
-		//	C2Count = parseInt(C2Values[1]);
-		//	OverlapCount = parseInt(OverlapValues[1]);
+		C3NucArea = getResultString("Area", i+2*numROIs);
+		C3NucMean = getResultString("Mean", i+2*numROIs);
+		C3NucIntDen = getResultString("IntDen", i+2*numROIs);
+		C3NucRawIntDen = getResultString("RawIntDen", i+2*numROIs);
 		
-			// calculate the percent overlap and convert to string
-		//	C1withC2 = OverlapCount/C1Count;
-		//	C2withC1 = OverlapCount/C2Count;
-		//	strC1withC2 = d2s(C1withC2, 3);
-		//	strC2withC1 = d2s(C2withC1, 3);
+		C3CytoArea = getResultString("Area", i+3*numROIs);
+		C3CytoMean = getResultString("Mean", i+3*numROIs);
+		C3CytoIntDen = getResultString("IntDen", i+3*numROIs);
+		C3CytoRawIntDen = getResultString("RawIntDen", i+3*numROIs);
 		
-			// collect the colocalization data
-			// format: image name, n cells, n cells colocalized with other label, % colocalized with other label
-		//	firstRow = C1Name+",1," + C1Count+ ","+ OverlapCount + "," + strC1withC2;
-		//	secondRow = C2Name + ",2," + C2Count+ "," + OverlapCount + "," + strC2withC1;
-		//	colocResults = firstRow + "\n" + secondRow;
+		// assemble results:
+			// 0 filename, 1 x centroid, 2 y centroid,
+			// 3-6 C2 nuclear, 7-10 C2 cyto,
+			// 11-14 C3 nuclear, 15-18 C3 cyto
 
-		//	File.append(newResults,outputdir + File.separator + resultName);
+		resultString1 = basename + "," + x + "," + y + ",";
+		resultString2 = C2NucArea + ","+ C2NucMean + ","+ C2NucIntDen + ","+ C2NucRawIntDen+ ",";
+		resultString3 = C3NucArea + ","+ C3NucMean + ","+ C3NucIntDen + ","+ C3NucRawIntDen+ ",";
+		resultString4 = C2CytoArea + ","+ C2CytoMean + ","+ C2CytoIntDen + ","+ C2CytoRawIntDen+ ",";
+		resultString5 = C3CytoArea + ","+ C3CytoMean + ","+ C3CytoIntDen + ","+ C3CytoRawIntDen;
 
+		resultString = resultString1 + resultString2 + resultString3 + resultString4 + resultString5;
+		
+		//  write data for this ROI: 
+		File.append(resultString,outputdir + File.separator + "Results.csv");
+		}
+	
 	// clean up
 	selectWindow(name);
 	close();
+	selectWindow(C3Name);
+	close();
 	roiManager("reset");
+	run("Clear Results");
+
+	print("==============================");
 	}
 
