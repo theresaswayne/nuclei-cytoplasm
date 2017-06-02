@@ -5,17 +5,18 @@
 // Note: DO NOT DELETE OR MOVE THE FIRST 3 LINES -- they supply essential parameters
 
 // arc_LC3B_analysis.ijm
-// ImageJ macro to identify DAPI nuclei in somewhat faint/noisy images at high magnification,
+// ImageJ macro to identify DAPI nuclei in faint/noisy images at high magnification,
 // and measure nuclear and cytoplasmic intensity in two other channels
 // Designed for analysis of neuronal markers
-// Theresa Swayne, Ph.D, Columbia University, tcs6@cumc.columbia.edu
+// Theresa Swayne, Ph.D, Columbia University, tcs6@cumc.columbia.edu, 2017
 
-// Input: folder of single 3- channel images (usually max projections) with nuclei as the 1st channel
-// Output: split channels, ROI set containing nuclei, measurements of nuclear and cytoplasmic intensity in the other channels
-//
+// Input: A folder of single-slice, 3-channel images (usually max projections), with nuclei as the 1st channel
+// Output: 
+//	1) split-channel images
+//	2) ROI sets containing nuclear and cytoplasmic regions measured
+//	3) a csv file containing measurements of nuclear and cytoplasmic intensity in channels 2 and 3
 // Usage: Organize images to be analyzed into a folder. Run the macro.
-
-// Limitations: only multi-channel images can be in the input directory. do not place previously split images there.
+// Limitations: only multi-channel images can be in the input directory. Do not place previously split images there.
  
 // ADJUSTABLE PARAMETERS -------------------------
 
@@ -90,7 +91,7 @@ function processFolder(inputdir)
            		segmentNucleiImage(inputdir, list[i]);} // nuclei segmentation 
            	else if (startsWith(list[i], "C2")){
            		processC2C3Image(inputdir, list[i]);} // nuclei/cytoplasm intensity analysis
-        	} // nothing happens with C3 images or original images
+        	} // nothing happens here with C3 images or original images
     	}
 	}
 
@@ -103,7 +104,7 @@ function splitChannelsImage(inputdir, name)
 	run("Split Channels");
 	while (nImages > 0)  // works on any number of channels
 		{
-		saveAs ("tiff", inputdir+File.separator+getTitle);	// save every picture in the *input* folder
+		saveAs ("tiff", inputdir+File.separator+getTitle);	// save split channels in the *input* folder
 		close();
 		}
 	}
@@ -128,8 +129,8 @@ function segmentNucleiImage(inputdir, name)
 	selectWindow(procName);
 	
 	// PRE-PROCESSING -----------------------------------------------------------
-	run("Enhance Local Contrast (CLAHE)", "blocksize=" + BLOCKSIZE + " histogram=256 maximum=3 mask=*None*"); // accentuates faint nuclei
-	run("Gaussian Blur...", "sigma=8"); // merges speckles to make nucleus more cohesive
+	run("Enhance Local Contrast (CLAHE)", "blocksize=" + BLOCKSIZE + " histogram=256 maximum=3 mask=*None*"); // accentuate faint nuclei
+	run("Gaussian Blur...", "sigma=8"); // merge speckles to make nucleus more cohesive
 	
 	// SEGMENTATION AND MASK PROCESSING -------------------------------------------
 	selectWindow(procName);
@@ -164,23 +165,23 @@ function processC2C3Image(inputdir, name)
 	open(inputdir+File.separator+name); // C2 image
 	print("processing C2 image",name);
 	dotIndex = indexOf(name, ".");
-	basename = substring(name, 3, dotIndex); // taking off the channel number
+	basename = substring(name, 3, dotIndex); // take off the channel number
 	nucRoiName = basename + "_Nuclei.zip";
 	cytRoiName = basename + "_Cyto.zip";
 
 	C3Name = "C3-"+basename+".tif";
-	open(inputdir+File.separator+C3Name); // corresponding C3 image
+	open(inputdir+File.separator+C3Name); // the corresponding C3 image
 	print("processing C3 image",C3Name);
 
 	roiManager("Open", outputdir + File.separator + nucRoiName); // ROI set containing nuclei
 
 	// measure C2 nuclear intensity
 	selectWindow(name);
-	roiManager("multi-measure measure_all append"); // measure individual nuclei and appends results
+	roiManager("multi-measure measure_all append"); // measure individual nuclei and append results
 
 	// measure C3 nuclear intensity
 	selectWindow(C3Name);
-	roiManager("multi-measure measure_all append"); // measure individual nuclei and appends results
+	roiManager("multi-measure measure_all append");
 	
 	// create and save cytoplasm band ROIs
 	numROIs = roiManager("count");
