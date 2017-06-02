@@ -25,8 +25,8 @@ BLOCKSIZE = 127; // used in contrast enhancement
 RADIUS = 40; // used in local thresholding
 
 // Allowable nuclei sizes in microns^2
-CELLMIN = 30; // minimum area
-CELLMAX = 500; // maximum area
+CELLMIN = 60; // minimum area
+CELLMAX = 150; // maximum area
 
 // Radius beyond the nucleus, in microns, that is used to measure cytoplasm
 // Larger values may impinge on neighboring cells
